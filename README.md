@@ -90,7 +90,7 @@ python3 trident.py --model moe-large --bytes 1                  # a model too bi
 
 | System | What it is |
 |---|---|
-| `hbm_gpu` | GPU-style baseline, everything in HBM. Scales to several GPUs if the model doesn't fit (inter-GPU communication is **not** modeled, which flatters the baseline) |
+| `hbm_gpu` | GPU-style baseline, everything in HBM. Scales to several GPUs if the model doesn't fit (inter-GPU communication is **not** modeled, which flatters the baseline). Runs at 70% of peak bandwidth (`bw_eff=0.7`), a placeholder judgment, not a measured value |
 | `ddr_cpu` | conventional DDR5 baseline |
 | `tri_stream` | all weight math on the main core, weights streamed over the fork with prefetch |
 | `tri_ndp` | all weight math on the far units, in place |
@@ -112,15 +112,17 @@ python3 trident.py --model moe-large --bytes 1                  # a model too bi
 
 Placeholder hardware, so read these as directions only.
 
-- **7B, 1 user:** `tri_split` is about **2.8× faster** than `hbm_gpu` and uses about **1.9× less energy** per token.
-- **Far units:** the design needs roughly **16 or more** to clearly beat the GPU. At 4 it loses.
-- **Mixtral (MoE):** `tri_split` beats a **2-GPU** baseline at every batch size from 1 to 64 (about 1.3× at 64 users).
+- **7B, 1 user:** `tri_split` is about **4.1× faster** than `hbm_gpu` (725 vs 179 tok/s) and uses about **1.8× less energy** per token (`tri_ndp` gets 1.9×). The speedup was 2.8× before the baseline bandwidth factor was added.
+- **Far units:** `tri_split` needs about **8 far units** to beat the GPU. At 4 it loses (153 vs 179 tok/s), at 8 it wins (303), at 32 it reaches 725.
+- **Mixtral (MoE):** `tri_split` beats a **2-GPU** baseline at every batch size from 1 to 64: 2.0× at batch 1 and 1.9× at batch 64 (5,944 vs 3,149 tok/s).
+- **70B dense (2 GPUs for the baseline):** `tri_split` is about **2.1× faster** (72 vs 34 tok/s).
+- **Large MoE (128 experts, 472 GB, 6 GPUs for the baseline):** the 6-GPU `hbm_gpu` (374 tok/s) beats `tri_split` (256 tok/s) at batch 1. Trident still uses about **1.7× less energy** per token (704 vs 1,219 mJ). Its win here is energy, not speed.
 - **Expert prediction:** only the streaming path cares about it. `tri_ndp` gives the same speed at 50% and 99% accuracy.
 - **Resume:** continuing a 32K-token conversation takes about **1.2 s** on the GPU and about **0** on Trident, since the KV cache never left MRAM.
 - **Cold start:** about **0 s**, because weights already sit in nonvolatile memory. The GPU baseline has to load them from an SSD (around 2 s for 7B, around 10 s for 70B).
 
 ### Known weakness: long context
-At 64K tokens of context, the KV cache spills from SRAM into MRAM and every read crosses the fork. Trident drops to roughly a tie with the GPU (104 vs 111 tok/s). Fixing this is on the roadmap.
+At 64K tokens of context, the KV cache spills from SRAM into MRAM and every read crosses the fork. Trident's lead shrinks from about 4× at 512 tokens to about 1.3× at 64K (104 vs 78 tok/s). The GPU baseline slows down too, so the earlier "roughly a tie" (104 vs 111) no longer holds, but the fork-bound slowdown is still real. Fixing this is on the roadmap.
 
 ---
 

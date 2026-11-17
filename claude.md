@@ -21,14 +21,17 @@ A theoretical computer component for AI **inference** (running trained models, n
 - Not modeled yet: prefill throughput, bank conflicts/queueing, expert load imbalance, thermal limits, multi-GPU communication (this favors the baseline), embeddings / LM head.
 
 ## Results so far (placeholder hardware, directional only)
-- 7B, batch 1: `tri_split` about 2.8x faster than `hbm_gpu`, about 1.9x less energy per token.
-- Needs about 16 or more far units to clearly win.
-- Mixtral: `tri_split` beats a 2-GPU baseline at every batch size (1 to 64), about 1.3x at batch 64.
-- Weakness: long context. At 64K tokens the KV cache moves to MRAM, crosses the fork, and the trident roughly ties or slightly loses to the GPU.
+- 7B, batch 1: `tri_split` about 4.1x faster than `hbm_gpu` (725 vs 179 tok/s), about 1.8x less energy per token (`tri_ndp` 1.9x). Was 2.8x before the GPU bandwidth factor was added.
+- Needs about 8 far units to beat the GPU (153 tok/s at 4, 303 at 8).
+- Mixtral: `tri_split` beats a 2-GPU baseline at every batch size (1 to 64): 2.0x at batch 1, 1.9x at batch 64.
+- 70B dense (2-GPU baseline): `tri_split` about 2.1x faster.
+- Large MoE (128 experts, 6-GPU baseline): `hbm_gpu` is faster at batch 1 (374 vs 256 tok/s); Trident uses about 1.7x less energy.
+- Weakness: long context. At 64K tokens the KV cache moves to MRAM, crosses the fork, and Trident's lead drops to about 1.3x (104 vs 78 tok/s).
 - Resuming a 32K-token conversation: about 1.2 s on the GPU vs about 0 on the trident.
+- All GPU-baseline numbers use `bw_eff=0.7` (placeholder judgment, not calibrated).
 
 ## Next steps (priority order)
-1. Calibrate `hbm_gpu` against published real tokens/sec (7B and Mixtral on an H100).
+1. Calibrate `hbm_gpu` against published real tokens/sec (7B and Mixtral on an H100). `bw_eff=0.7` is a placeholder until this is done.
 2. Replace the placeholder device numbers with cited figures.
 3. Fix long context: try attention on the far units, or a faster MRAM-to-main-core path.
 4. Add prefill modeling.

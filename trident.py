@@ -250,11 +250,12 @@ def session_kv_bytes(m, wl):
 
 # ---------------------------------------------------------------- baselines (one flat memory)
 
-def sim_flat(name, m, wl, mem, core, ssd_gbs):
+def sim_flat(name, m, wl, mem, core, ssd_gbs, bw_eff=1.0):
+    """bw_eff: achieved fraction of peak bandwidth (1.0 = roofline ideal)"""
     s = Stats(name)
     need = m.total_weight_bytes() + kv_total(m, wl, wl.prompt_len + wl.gen_tokens)
     n = max(1, math.ceil(need / (mem.capacity_gb * GB)))
-    bw, flops_peak = n * mem.bw_gbs * GB, n * core.tflops * 1e12
+    bw, flops_peak = n * mem.bw_gbs * GB * bw_eff, n * core.tflops * 1e12
     if n > 1:
         s.add_note(f"needs {n}x {mem.name} (no inter-device comm modeled)")
     for step in range(wl.gen_tokens):
@@ -396,7 +397,9 @@ POLICIES = ("stream", "ndp", "adapt", "split")
 
 def run_all(m, wl, units=32, acc=0.9):
     main, hbm, ddr, tri, ssd = default_hardware(units)
-    out = [sim_flat("hbm_gpu", m, wl, hbm, main, ssd), sim_flat("ddr_cpu", m, wl, ddr, main, ssd)]
+    # GPU bw_eff = 0.7: PLACEHOLDER judgment, midpoint of the 60-80% achieved-bandwidth range seen in
+    # published batch-1 decode work (no clean H100 Llama-2-7B fp16 measurement found). Not calibrated.
+    out = [sim_flat("hbm_gpu", m, wl, hbm, main, ssd, bw_eff=0.7), sim_flat("ddr_cpu", m, wl, ddr, main, ssd)]
     out += [sim_trident(p, m, wl, tri, acc) for p in POLICIES]
     return out
 
